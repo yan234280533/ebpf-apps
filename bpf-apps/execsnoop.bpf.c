@@ -3,6 +3,7 @@
 
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_core_read.h>
 #include "execsnoop.h"
 
 static const struct event empty_event = { };
@@ -30,10 +31,14 @@ int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter
 	struct event *event;
 	const char **args = (const char **)(ctx->args[1]);
 	const char *argp;
+	struct task_struct *task;
 
 	// get the PID
 	u64 id = bpf_get_current_pid_tgid();
 	pid_t pid = (pid_t) id;
+
+	u64 id_u = bpf_get_current_uid_gid();
+	uid_t uid = (uid_t) id_u;
 
 	// update the exec metadata to execs map
 	if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
@@ -45,8 +50,14 @@ int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter
 	}
 	// update event metadata
 	event->pid = pid;
+	event->user = uid;
 	event->args_count = 0;
 	event->args_size = 0;
+	event->retval = event->retval + 999;
+
+	task = (struct task_struct *)bpf_get_current_task();
+
+	event->parent_pid = BPF_CORE_READ(task, real_parent, tgid);
 
 	// query the first parameter
 	unsigned int ret = bpf_probe_read_user_str(event->args, ARGSIZE,
@@ -103,6 +114,10 @@ int tracepoint__syscalls__sys_exit_execve(struct trace_event_raw_sys_exit *ctx)
 	// get the exec metadata from execs map
 	id = bpf_get_current_pid_tgid();
 	pid = (pid_t) id;
+
+	u64 id_u = bpf_get_current_uid_gid();
+	uid_t uid = (uid_t) id_u;
+
 	event = bpf_map_lookup_elem(&execs, &pid);
 	if (!event)
 		return 0;
@@ -110,6 +125,7 @@ int tracepoint__syscalls__sys_exit_execve(struct trace_event_raw_sys_exit *ctx)
 	// update event retval
 	ret = ctx->ret;
 	event->retval = ret;
+	event->user = uid;
 	bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
 	// submit to perf event
