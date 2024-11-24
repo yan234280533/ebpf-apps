@@ -97,11 +97,22 @@ int http_trace(struct __sk_buff *skb)
 	event->payload_length = payload_length;
 	__u32 read_length =
 	    payload_length > MAX_LENGTH ? MAX_LENGTH : payload_length;
-	bpf_skb_load_bytes(skb, payload_offset, event->payload, read_length);
+	/*bpf_skb_load_bytes(skb, payload_offset, event->payload, payload_length);
 	bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, saddr),
 			   &event->saddr, 4);
 	bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, daddr),
+			   &event->daddr, 4);*/
+
+	bpf_skb_load_bytes(skb, payload_offset, event->payload, MAX_LENGTH);
+
+	//bpf_skb_load_bytes(skb, nhoff + offsetof(struct iphdr, saddr), &(event->src_addr), 4);
+	//bpf_skb_load_bytes(skb, nhoff + offsetof(struct iphdr, daddr), &(e->dst_addr), 4);
+	bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, saddr),
+		   &event->saddr, 4);
+	bpf_skb_load_bytes(skb, ETH_HLEN + offsetof(struct iphdr, daddr),
 			   &event->daddr, 4);
+
+
 	bpf_ringbuf_submit(event, 0);
 
 	return 0;
